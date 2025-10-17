@@ -24,12 +24,12 @@ NTSTATUS InitNtUser()
 {
     InitDummyKernelCallbacks();
 
-    //auto status = NtUserInitialize(NtCurrentProcess(), 0);
-    //if (!NT_SUCCESS(status))
+    // auto status = NtUserInitialize(NtCurrentProcess(), 0);
+    // if (!NT_SUCCESS(status))
     //{
-    //    ConLog("NtUserInitialize failed: 0x%08lX\n", status);
-    //    return status;
-    //}
+    //     ConLog("NtUserInitialize failed: 0x%08lX\n", status);
+    //     return status;
+    // }
 
     auto status = NtGdiInit();
     if (!NT_SUCCESS(status))
@@ -50,8 +50,9 @@ void CheckForDebugEvent()
     auto status = NtOpenEvent(&dbgEvent, EVENT_ALL_ACCESS, &attrs);
     if (NT_SUCCESS(status))
     {
-        ConLog("waiting for debug event...\n");
-        NtWaitForSingleObject(dbgEvent, FALSE, nullptr);
+        ConLog("waiting up to 30 seconds for debug event...\n");
+        LARGE_INTEGER timeout = {.QuadPart = 30000 * -10000};
+        NtWaitForSingleObject(dbgEvent, FALSE, &timeout);
         NtClose(dbgEvent);
     }
 }
@@ -66,7 +67,7 @@ int main(int argc, char* argv[], char* envp[], int dbgFlag)
         return status;
     }
 
-    DxCon state;
+    DxCon state(1, 800, 600);
 
     status = state.CreateDeviceResources();
     if (!NT_SUCCESS(status))
@@ -76,7 +77,11 @@ int main(int argc, char* argv[], char* envp[], int dbgFlag)
 
     while (true)
     {
-        state.Present();
+        status = state.Present();
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
     }
 
     return STATUS_SUCCESS;

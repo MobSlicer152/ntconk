@@ -47,6 +47,49 @@ NTSTATUS DxCon::GetAdapter()
     return STATUS_SUCCESS;
 }
 
+NTSTATUS DxCon::LoadUMDriver()
+{
+    ConLog("Querying UMD filename\n");
+
+    D3DKMT_UMDFILENAMEINFO umdInfo = {};
+    umdInfo.Version = KMTUMDVERSION_DX12;
+    auto status = QueryAdapterInfo(KMTQAITYPE_UMDRIVERNAME, &umdInfo, sizeof(D3DKMT_UMDFILENAMEINFO));
+    if (!NT_SUCCESS(status))
+    {
+        ConLog("Failed to get UMD filename: 0x%08lX\n", status);
+        return status;
+    }
+
+    ConLog("Loading UMD %ws\n", umdInfo.UmdFileName);
+
+    auto fileName = wcsrchr(umdInfo.UmdFileName, L'\\') + 1;
+    UNICODE_STRING fileNameStr = {};
+    RtlInitUnicodeString(&fileNameStr, fileName);
+
+    status = LdrLoadDll(umdInfo.UmdFileName, nullptr, &fileNameStr, &umdBase);
+    if (!NT_SUCCESS(status))
+    {
+        ConLog("Failed to load UMD: 0x%08lX\n", status);
+        return status;
+    }
+
+    ConLog("Getting OpenAdapter in UMD\n");
+    ANSI_STRING procName = {};
+    RtlInitAnsiString(&procName, "OpenAdapter");
+
+    PFND3DDDI_OPENADAPTER OpenAdapter;
+    status = LdrGetProcedureAddress(umdBase, &procName, 0, (PVOID*)&OpenAdapter);
+    if (!NT_SUCCESS(status))
+    {
+        ConLog("Failed to get address of OpenAdapter: 0x%08lX\n", status);
+        return status;
+    }
+
+    D3DDDIARG_OPENADAPTER openAdapter = {};
+
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS DxCon::CreateDevice()
 {
     D3DKMT_CREATEDEVICE createDev = {};
@@ -82,11 +125,7 @@ NTSTATUS DxCon::CreateContext()
 
 NTSTATUS DxCon::AllocFramebuffer()
 {
-    D3DDDI_SURFACEINFO surfInfo = {};
-    surfInfo.Width = width;
-    surfInfo.Height = width;
-
-    ConLog("Allocating framebuffer memory\n");
+    ConLog("Allocating %ux%u framebuffer\n", width, height);
 
     framebufferSize = ALIGN_UP_BY(width * height * sizeof(UINT), PAGE_SIZE);
     auto status = NtAllocateVirtualMemory(NtCurrentProcess(), &framebufferMem, 0, &framebufferSize, MEM_COMMIT, PAGE_READWRITE);
@@ -97,24 +136,26 @@ NTSTATUS DxCon::AllocFramebuffer()
     }
 
     ConLog("Creating framebuffer resource\n");
-    D3DKMT_CREATESTANDARDALLOCATION stdAlloc = {};
-    stdAlloc.Type = D3DKMT_STANDARDALLOCATIONTYPE_EXISTINGHEAP;
-    stdAlloc.ExistingHeapData.Size = framebufferSize;
+    D3DDDI_ALLOCATIONINFO2 allocInfo = {};
+    // allocInfo.pSystemMem = framebufferMem;
 
-    D3DDDI_ALLOCATIONINFO allocInfo = {};
-    allocInfo.pSystemMem = framebufferMem;
+    allocInfo.Flags.Primary = true;
+
+    D3DKMDT_SHAREDPRIMARYSURFACEDATA sharedSurfData = {};
+    sharedSurfData.Width = width;
+    sharedSurfData.Height = height;
+    sharedSurfData.Format = D3DDDIFMT_A8B8G8R8;
 
     D3DKMT_CREATEALLOCATION createAlloc = {};
     createAlloc.hDevice = device;
     createAlloc.NumAllocations = 1;
-    createAlloc.pAllocationInfo = &allocInfo;
-    createAlloc.pStandardAllocation = &stdAlloc;
+    createAlloc.pAllocationInfo2 = &allocInfo;
+    createAlloc.pPrivateDriverData = &sharedSurfData;
+    createAlloc.PrivateDriverDataSize = sizeof(D3DKMDT_SHAREDPRIMARYSURFACEDATA);
 
     createAlloc.Flags.CreateResource = true;
     createAlloc.Flags.CreateShared = true;
-    createAlloc.Flags.CrossAdapter = true;
-    createAlloc.Flags.StandardAllocation = true;
-    createAlloc.Flags.ExistingSysMem = true;
+    createAlloc.Flags.SwapChainBackBuffer = true;
 
     status = D3DKMTCreateAllocation(&createAlloc);
     if (!NT_SUCCESS(status))
@@ -123,13 +164,39 @@ NTSTATUS DxCon::AllocFramebuffer()
         return status;
     }
 
+    framebufferAlloc = allocInfo.hAllocation;
     framebufferResource = createAlloc.hResource;
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DxCon::SetDisplayMode()
+{
+    ConLog("Setting display mode\n");
+
+    D3DKMT_SETDISPLAYMODE mode = {};
+    mode.hDevice = device;
+    mode.hPrimaryAllocation = framebufferAlloc;
+    mode.DisplayOrientation = D3DDDI_ROTATION_IDENTITY;
+
+    auto status = D3DKMTSetDisplayMode(&mode);
+    if (!NT_SUCCESS(status))
+    {
+        ConLog("D3DKMTSetDisplayMode failed 0x%08lX\n", status);
+        return status;
+    }
+
     return STATUS_SUCCESS;
 }
 
 NTSTATUS DxCon::CreateDeviceResources()
 {
     auto status = GetAdapter();
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    status = LoadUMDriver();
     if (!NT_SUCCESS(status))
     {
         return status;
@@ -153,6 +220,12 @@ NTSTATUS DxCon::CreateDeviceResources()
         return status;
     }
 
+    status = SetDisplayMode();
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
     return STATUS_SUCCESS;
 }
 
@@ -161,7 +234,9 @@ NTSTATUS DxCon::Present()
     D3DKMT_PRESENT present = {};
     present.hContext = context;
     present.hAdapter = adapter;
-    present.hSource = framebufferResource;
+    present.hSource = framebufferAlloc;
+
+    present.Flags.Flip = true;
 
     auto status = D3DKMTPresent(&present);
     if (!NT_SUCCESS(status))
