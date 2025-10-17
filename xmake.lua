@@ -2,7 +2,7 @@ add_rules("plugin.vsxmake.autoupdate", "mode.debug", "mode.release")
 
 set_policy("check.auto_ignore_flags", false)
 
-set_project("ntconk")
+set_project("dxcon")
 
 set_allowedplats("windows")
 set_allowedmodes("debug", "release")
@@ -38,6 +38,6 @@ target("external")
 target_end()
 
 includes("dxfwd")
-includes("ntconk")
-includes("umtest")
+includes("dxcon")
+includes("ntlaunch")
 

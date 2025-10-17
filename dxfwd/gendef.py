@@ -5,7 +5,7 @@ def main(argv):
         print(f"usage: {argv[0]} <function list> <forwarder dll name> [exclude list]")
         exit(0)
 
-    print(f"generating D3DKMT->Dxgk forwarder def {argv[2]}.def from {argv[1]}")
+    print(f"generating D3DKMT->NtGdiDdDDI forwarder def {argv[2]}.def from {argv[1]}")
 
     funcs = []
     with open(argv[1], "r") as f:
@@ -22,7 +22,7 @@ def main(argv):
         f.write(f"LIBRARY \"{argv[2]}\"\nEXPORTS\n")
         for func in funcs:
             print(f"{func}")
-            f.write(f"\tD3DKMT{func}=DXGKERNEL.Dxgk{func}\n")
+            f.write(f"\tD3DKMT{func}=WIN32U.NtGdiDdDDI{func}\n")
 
 if __name__ == "__main__":
     main(sys.argv)
