@@ -1,0 +1,17 @@
+BasedOnStyle: Microsoft
+ColumnLimit: 130
+IndentWidth: 4
+UseTab: Never
+PointerAlignment: Left
+ReferenceAlignment: Left
+ReflowComments: true
+#AlignAfterOpenBracket: AlwaysBreak
+#AlignArrayOfStructures: Right
+AlignConsecutiveMacros: true
+SpaceBeforeInheritanceColon: false
+AllowShortBlocksOnASingleLine: true
+AllowAllArgumentsOnNextLine: true
+SpaceBeforeCpp11BracedList: true
+BinPackArguments: false
+BinPackParameters: false
+SortIncludes: Never
