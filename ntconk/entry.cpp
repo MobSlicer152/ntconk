@@ -10,9 +10,16 @@ _Use_decl_annotations_ extern "C" NTSTATUS DriverEntry(PDRIVER_OBJECT driverObj,
     g_driverObj = driverObj;
     g_driverObj->DriverUnload = DriverUnload;
 
+    ConLog("Initializing render resources\n");
+    auto status = InitRender();
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
     ConLog("Creating render thread\n");
     g_running = true;
-    auto status = PsCreateSystemThread(&g_renderThread, THREAD_ALL_ACCESS, nullptr, nullptr, nullptr, RenderThread, nullptr);
+    status = PsCreateSystemThread(&g_renderThread, THREAD_ALL_ACCESS, nullptr, nullptr, nullptr, RenderThread, nullptr);
     if (!NT_SUCCESS(status))
     {
         ConLog("Failed to create render thread: 0x%08lX\n", status);

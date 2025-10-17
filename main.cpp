@@ -1,21 +1,24 @@
-#include "ntconk.h"
+#include <stdio.h>
 
-HANDLE g_renderThread;
+#include "phnt_windows.h"
+#include "phnt.h"
 
-static D3DKMT_HANDLE s_adapter;
+#include <d3dkmthk.h>
 
-void RenderThread(void* context)
+#define ConLog(...) printf("NTCONU: " __VA_ARGS__)
+
+NTSTATUS QueryAdapterInfo(D3DKMT_HANDLE adapter, KMTQUERYADAPTERINFOTYPE type, PVOID data, UINT size)
 {
-    UNREFERENCED_PARAMETER(context);
+    D3DKMT_QUERYADAPTERINFO queryInfo = {};
+    queryInfo.hAdapter = adapter;
+    queryInfo.Type = type;
+    queryInfo.pPrivateDriverData = data;
+    queryInfo.PrivateDriverDataSize = size;
 
-    ConLog("Render thread started\n");
-
-    while (g_running)
-    {
-    }
+    return D3DKMTQueryAdapterInfo(&queryInfo);
 }
 
-NTSTATUS InitRender()
+int main(int argc, char* argv[])
 {
     D3DKMT_ENUMADAPTERS adapters = {};
     auto status = D3DKMTEnumAdapters(&adapters);
@@ -31,11 +34,12 @@ NTSTATUS InitRender()
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    s_adapter = adapters.Adapters[0].hAdapter;
+    auto adapterIdx = 0;
+    auto adapter = adapters.Adapters[adapterIdx].hAdapter;
 
-    ConLog("Getting info for adapter\n");
+    ConLog("Getting info for adapter %d\n", adapterIdx);
     D3DKMT_ADAPTERREGISTRYINFO regInfo = {};
-    status = QueryAdapterInfo(s_adapter, KMTQAITYPE_ADAPTERREGISTRYINFO, &regInfo, sizeof(D3DKMT_ADAPTERREGISTRYINFO));
+    status = QueryAdapterInfo(adapter, KMTQAITYPE_ADAPTERREGISTRYINFO, &regInfo, sizeof(D3DKMT_ADAPTERREGISTRYINFO));
     if (!NT_SUCCESS(status))
     {
         ConLog("Failed to get adapter info: 0x%08lX\n", status);
@@ -48,8 +52,9 @@ NTSTATUS InitRender()
     ConLog("\tDAC type: %ws\n", regInfo.DacType);
 
     D3DKMT_CREATEDEVICE createDev = {};
-    createDev.hAdapter = s_adapter;
+    createDev.hAdapter = adapter;
 
+    ConLog("Creating device\n");
     status = D3DKMTCreateDevice(&createDev);
     if (!NT_SUCCESS(status))
     {

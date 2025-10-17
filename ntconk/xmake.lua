@@ -4,5 +4,6 @@ target("ntconk")
     add_headerfiles("**.h")
     add_files("**.cpp", "*.rc")
 
+    add_deps("dxfwd", {force = true})
     add_packages("phnt")
 target_end()
